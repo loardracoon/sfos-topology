@@ -1,0 +1,44 @@
+services:
+  topology:
+    build: .
+    image: sfos-topology:local
+    container_name: sfos-topology
+
+    # Keys are injected as environment variables; devices.json only names them.
+    env_file:
+      - lab.env
+
+    # The fleet definition is mounted rather than baked in, so adding a
+    # firewall is an edit plus a restart, not a rebuild. Read-only on purpose
+    # (see read_only below): the in-app Settings UI (SFOS_ADMIN_TOKEN) cannot
+    # persist here even if enabled, and fails loudly rather than silently
+    # doing nothing. It's a bare-binary / local-use feature; edit this file
+    # from the host instead.
+    volumes:
+      - ./devices.json:/app/devices.json:ro
+
+    # Bound to loopback. This viewer shows a customer's internal addressing and
+    # has no authentication of its own; publish it wider only behind something
+    # that does.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    command:
+      - -config=/app/devices.json
+      - -serve=0.0.0.0:8080
+      - -refresh=15m
+
+    healthcheck:
+      test: ["CMD", "/sfos-topology", "-healthcheck", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    restart: unless-stopped
+
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

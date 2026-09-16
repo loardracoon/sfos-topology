@@ -1,0 +1,7 @@
+{"items":[
+{"createdAt":"2026-09-15T02:41:46.164Z","description":"","id":"a2a59b39-4d5c-4a0a-8fc3-864940ca9455","isInternal":true,"name":"LAN","type":"lan","updatedAt":"2026-09-15T02:41:46.165Z"},
+{"createdAt":"2026-09-15T02:41:46.164Z","description":"","id":"cca9dcc1-0a7e-4c93-8247-3b3f23aee065","isInternal":true,"name":"WAN","type":"wan","updatedAt":"2026-09-15T02:41:46.165Z"},
+{"createdAt":"2026-09-15T02:41:46.164Z","description":"","id":"cc70cfac-0c27-4719-9e04-9d5adc37a3a6","isInternal":true,"name":"DMZ","type":"dmz","updatedAt":"2026-09-15T02:41:46.165Z"},
+{"createdAt":"2026-09-15T02:41:46.164Z","description":"","id":"18f8aa21-5b95-48c1-bc7b-fdbc531ef835","isInternal":true,"name":"VPN","type":"vpn","updatedAt":"2026-09-15T02:41:46.165Z"},
+{"createdAt":"2026-09-15T02:41:46.164Z","description":"","id":"c71d7140-b12d-4d22-a4f1-0f428b86f042","isInternal":true,"name":"WiFi","type":"lan","updatedAt":"2026-09-15T02:41:46.165Z"}
+],"pages":{"current":1,"maxSize":100,"size":50}}

@@ -1,0 +1,16 @@
+{
+  "concurrency": 4,
+  "timeoutSeconds": 60,
+  "devices": [
+    {
+      "label": "FW-LAB-01",
+      "host": "192.168.101.99:4444",
+      "offlineDir": "captures/fw01"
+    },
+    {
+      "label": "FW-LAB-02",
+      "host": "192.168.101.98:4444",
+      "offlineDir": "captures/fw02"
+    }
+  ]
+}

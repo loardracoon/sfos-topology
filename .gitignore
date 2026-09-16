@@ -1,0 +1,16 @@
+# API keys
+lab.env
+*.env
+!devices.example.json
+devices.secrets.json
+
+# Collector output and captures: both contain customer addressing
+graph.json
+captures/
+*.svg
+
+# Build
+/sfos-topology
+
+# Claude Code session metadata, not part of the project
+.claude/
