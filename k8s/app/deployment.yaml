@@ -40,7 +40,7 @@ spec:
               mountPath: /data
       containers:
         - name: sfos-topology
-          image: ghcr.io/loardracoon/sfos-topology:11a02aaba3e2942ec04ebe47a0ffca412b32fe3d
+          image: ghcr.io/loardracoon/sfos-topology:fd9594856ea18653622b1f3b22b9572ad4be5ea9
           args:
             - -config=/app/devices.json
             - -serve=0.0.0.0:8089
