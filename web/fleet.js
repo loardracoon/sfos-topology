@@ -53,18 +53,18 @@ export function closeFleetPanel() {
   if (panelEl) panelEl.classList.remove("open");
 }
 
-export async function openFleetPanel(getGraphDevices) {
+export async function openFleetPanel() {
   const panel = ensurePanel();
   panel.classList.add("open");
   const body = panel.querySelector("#fleetBody");
   body.innerHTML = "";
   body.appendChild(el("p", "empty-note", "Loading…"));
 
-  if (!token) { renderTokenPrompt(body, getGraphDevices); return; }
-  loadFleet(body, getGraphDevices);
+  if (!token) { renderTokenPrompt(body); return; }
+  loadFleet(body);
 }
 
-function renderTokenPrompt(body, getGraphDevices, message) {
+function renderTokenPrompt(body, message) {
   body.innerHTML = "";
   if (message) body.appendChild(el("div", "banner bad", `<div>${message}</div>`));
   body.appendChild(el("p", null,
@@ -83,17 +83,34 @@ function renderTokenPrompt(body, getGraphDevices, message) {
     if (!v) return;
     token = v;
     sessionStorage.setItem(TOKEN_KEY, token);
-    loadFleet(body, getGraphDevices);
+    loadFleet(body);
   });
   input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") go.click(); });
   body.appendChild(go);
 }
 
-async function loadFleet(body, getGraphDevices) {
+// fetchReports reads the current /graph.json (unauthenticated, always
+// up to date) for each device's live collection outcome -- reachable now,
+// or the error from the last attempt. Fetched fresh on every render rather
+// than handed in by the caller, so clicking "Refresh fleet" shows the
+// result of THAT pass immediately instead of whatever the caller's own
+// polling cycle last cached.
+async function fetchReports() {
+  try {
+    const res = await fetch("/graph.json", { cache: "no-store" });
+    if (!res.ok) return new Map();
+    const doc = await res.json();
+    return new Map((doc.devices || []).map(d => [d.label, d]));
+  } catch {
+    return new Map();
+  }
+}
+
+async function loadFleet(body) {
   const { ok, status, body: devices } = await apiFetch("/api/devices");
   if (status === 401) {
     token = ""; sessionStorage.removeItem(TOKEN_KEY);
-    renderTokenPrompt(body, getGraphDevices, "That token was rejected.");
+    renderTokenPrompt(body, "That token was rejected.");
     return;
   }
   if (status === 404) {
@@ -107,15 +124,30 @@ async function loadFleet(body, getGraphDevices) {
     return;
   }
 
-  // Cross-reference the settings list (credential source, never a value)
-  // with the graph document's own per-device collection report (reachable
-  // now, or the error from the last attempt) so one row shows both without
-  // a second write-gated round trip.
-  const reports = new Map((getGraphDevices() || []).map(d => [d.label, d]));
+  const reports = await fetchReports();
 
   body.innerHTML = "";
   body.appendChild(el("div", "fleet-lock",
     "Write surface is opt-in. Without an admin secret every fleet and policy call answers 404, not 401."));
+
+  const refreshBtn = el("button", "outline", "Refresh fleet");
+  refreshBtn.type = "button"; refreshBtn.style.marginBottom = ".8rem";
+  refreshBtn.title = "Re-collect every appliance now, instead of waiting for the next scheduled refresh";
+  refreshBtn.addEventListener("click", async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = "Refreshing…";
+    const { ok, status, body: resp } = await apiFetch("/api/devices/refresh", { method: "POST" });
+    if (!ok) {
+      result.innerHTML = "";
+      result.appendChild(el("div", "banner bad", `<div>${escapeHtml((resp && resp.error) || "HTTP " + status)}</div>`));
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = "Refresh fleet";
+      return;
+    }
+    loadFleet(body);
+  });
+  body.appendChild(refreshBtn);
+  const result = el("div"); body.appendChild(result);
 
   const list = el("div");
   for (const d of devices) {
@@ -131,12 +163,12 @@ async function loadFleet(body, getGraphDevices) {
       <span class="src">${src}</span>
       <span class="pill ${dotCls === "ok" ? "ok" : dotCls === "bad" ? "bad" : "ghost"}" style="${dotCls === "replay" ? "background:var(--n100);color:var(--n600)" : ""}">${stateText}</span>`;
     const edit = el("button", "ghost", "Edit"); edit.type = "button"; edit.style.marginLeft = ".4rem";
-    edit.addEventListener("click", () => renderForm(body, getGraphDevices, d));
+    edit.addEventListener("click", () => renderForm(body, d));
     const del = el("button", "ghost", "Remove"); del.type = "button";
     del.addEventListener("click", async () => {
       if (!confirm(`Remove ${d.label}?`)) return;
       await apiFetch("/api/devices/" + encodeURIComponent(d.label), { method: "DELETE" });
-      loadFleet(body, getGraphDevices);
+      loadFleet(body);
     });
     row.append(edit, del);
     list.appendChild(row);
@@ -145,14 +177,14 @@ async function loadFleet(body, getGraphDevices) {
 
   const addBtn = el("button", "primary", "Add appliance");
   addBtn.type = "button"; addBtn.style.marginTop = "1rem";
-  addBtn.addEventListener("click", () => renderForm(body, getGraphDevices, null));
+  addBtn.addEventListener("click", () => renderForm(body, null));
   body.appendChild(addBtn);
 
   body.appendChild(el("div", "fleet-foot",
     "devices.json is safe to share · devices.secrets.json never leaves the host."));
 }
 
-function renderForm(body, getGraphDevices, existing) {
+function renderForm(body, existing) {
   body.innerHTML = "";
   body.appendChild(el("h3", null, existing ? `Edit ${existing.label}` : "Add appliance"));
 
@@ -194,10 +226,10 @@ function renderForm(body, getGraphDevices, existing) {
     result.innerHTML = "";
     result.appendChild(el("div", `banner ${dev && dev.error ? "bad" : "info"}`,
       `<div>${dev && dev.error ? `Saved, but unreachable: ${escapeHtml(dev.error)}` : "Saved and reachable."}</div>`));
-    loadFleet(body, getGraphDevices);
+    loadFleet(body);
   });
   const cancel = el("button", "ghost", "Cancel"); cancel.type = "button";
-  cancel.addEventListener("click", () => loadFleet(body, getGraphDevices));
+  cancel.addEventListener("click", () => loadFleet(body));
   actions.append(save, cancel);
   body.appendChild(actions);
 }

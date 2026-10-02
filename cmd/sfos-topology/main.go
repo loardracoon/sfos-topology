@@ -828,6 +828,9 @@ func devicesAPI(store *fleetStore, current *atomic.Pointer[[]byte], currentIPAM 
 			}
 			return applyAndReport(""), http.StatusOK
 		},
+		Refresh: func() ([]byte, int) {
+			return applyAndReport(""), http.StatusOK
+		},
 	}
 }
 

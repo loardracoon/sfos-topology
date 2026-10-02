@@ -907,8 +907,7 @@ function exportSvg() {
 // probe returning 404, so a viewer with no admin secret configured never
 // even sees that the surface exists).
 // ---------------------------------------------------------------------
-function getGraphDevices() { return doc ? doc.devices : []; }
-$("#fleetBtn").addEventListener("click", () => openFleetPanel(getGraphDevices));
+$("#fleetBtn").addEventListener("click", () => openFleetPanel());
 probeFleetAvailable().then(available => { $("#fleetBtn").hidden = !available; });
 
 // ---------------------------------------------------------------------

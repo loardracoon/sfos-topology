@@ -69,6 +69,10 @@ type DeviceAPI struct {
 	Create func(body []byte) (respBody []byte, status int)
 	Update func(label string, body []byte) (respBody []byte, status int)
 	Delete func(label string) (respBody []byte, status int)
+	// Refresh re-collects the whole fleet immediately, the same pass Create/
+	// Update/Delete already trigger on the device they touched, for when the
+	// admin just wants fresher data without waiting for -refresh's next tick.
+	Refresh func() (respBody []byte, status int)
 }
 
 // PolicyAPI is the access-control matrix surface: the current design (every
@@ -170,6 +174,10 @@ func Handler(graph Provider, ipamLookup IPAMLookup, devices DeviceAPI, policyAPI
 	}))
 	mux.HandleFunc("DELETE /api/devices/{label}", settingsGate(func(w http.ResponseWriter, r *http.Request) {
 		respBody, status := devices.Delete(r.PathValue("label"))
+		writeJSON(w, respBody, status)
+	}))
+	mux.HandleFunc("POST /api/devices/refresh", settingsGate(func(w http.ResponseWriter, r *http.Request) {
+		respBody, status := devices.Refresh()
 		writeJSON(w, respBody, status)
 	}))
 

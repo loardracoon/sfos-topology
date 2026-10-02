@@ -366,8 +366,7 @@ function renderApplyAllSummary(results) {
 // ---------------------------------------------------------------------
 // Fleet panel entry point
 // ---------------------------------------------------------------------
-function getGraphDevices() { return []; } // the policy view has no live graph document to cross-reference
-$("#fleetBtn").addEventListener("click", () => openFleetPanel(getGraphDevices));
+$("#fleetBtn").addEventListener("click", () => openFleetPanel());
 probeFleetAvailable().then(available => { $("#fleetBtn").hidden = !available; });
 
 load();
