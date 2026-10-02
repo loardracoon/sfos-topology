@@ -1,0 +1,25 @@
+# Applied once, by hand, to point ArgoCD at this repo:
+#   kubectl apply -f k8s/bootstrap/argocd-application.yaml
+# From then on ArgoCD watches k8s/app/ itself and this file never needs to
+# be touched again -- it deliberately lives outside that path so ArgoCD
+# never tries to manage its own Application resource.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sfos-topology
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/loardracoon/sfos-topology.git
+    targetRevision: master
+    path: k8s/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sfos-topology
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

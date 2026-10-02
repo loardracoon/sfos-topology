@@ -1,0 +1,94 @@
+# The image tag below is bumped automatically by .github/workflows/deploy.yml
+# on every push to master (it builds, pushes to GHCR, then commits the new
+# digest here) -- that commit is what gives ArgoCD something to sync. Editing
+# the tag by hand is harmless; the next CI run will overwrite it anyway.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sfos-topology
+  namespace: sfos-topology
+spec:
+  replicas: 1
+  strategy:
+    # The PVC below is ReadWriteOnce; a rolling update would briefly run two
+    # pods wanting the same volume. Recreate avoids that at the cost of a
+    # few seconds of downtime per deploy.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sfos-topology
+  template:
+    metadata:
+      labels:
+        app: sfos-topology
+    spec:
+      initContainers:
+        # Mirrors the Docker Compose deployment's own documented step
+        # (`echo '{"cells":[]}' > policy-matrix.json` before first run): a
+        # subPath mount of a file that doesn't exist yet is the one thing
+        # worth not leaving to chance across storage drivers.
+        - name: init-data
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              [ -f /data/policy-matrix.json ] || echo '{"cells":[]}' > /data/policy-matrix.json
+              [ -f /data/devices.secrets.json ] || echo '{}' > /data/devices.secrets.json
+          volumeMounts:
+            - name: app-data
+              mountPath: /data
+      containers:
+        - name: sfos-topology
+          image: ghcr.io/loardracoon/sfos-topology:latest
+          args:
+            - -config=/app/devices.json
+            - -serve=0.0.0.0:8089
+            - -refresh=15m
+          ports:
+            - name: http
+              containerPort: 8089
+          envFrom:
+            # Created out-of-band (kubectl create secret), never in git --
+            # see k8s/README.md. Supplies SFOS_TOKEN_FW101/102/103 and,
+            # optionally, SFOS_ADMIN_TOKEN to enable Settings/the policy
+            # matrix's write endpoints.
+            - secretRef:
+                name: sfos-fleet-secrets
+                optional: false
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: devices-config
+              mountPath: /app/devices.json
+              subPath: devices.json
+              readOnly: true
+            - name: app-data
+              mountPath: /app/policy-matrix.json
+              subPath: policy-matrix.json
+            - name: app-data
+              mountPath: /app/devices.secrets.json
+              subPath: devices.secrets.json
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { memory: 128Mi }
+      volumes:
+        - name: devices-config
+          configMap:
+            name: sfos-devices-config
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: sfos-app-data

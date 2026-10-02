@@ -1,0 +1,20 @@
+# devices.json has no credentials in it (tokens are named, never inlined --
+# see README's "Credentials" section), so unlike the fleet secret below it is
+# safe to track in git. Mirrors the project's own devices.json; edit both
+# together if the fleet changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sfos-devices-config
+  namespace: sfos-topology
+data:
+  devices.json: |
+    {
+      "concurrency": 3,
+      "timeoutSeconds": 60,
+      "devices": [
+        {"label": "FW-101", "host": "10.255.255.101:4444", "tokenEnv": "SFOS_TOKEN_FW101", "pinSha256": ""},
+        {"label": "FW-102", "host": "10.255.255.102:4444", "tokenEnv": "SFOS_TOKEN_FW102", "pinSha256": ""},
+        {"label": "FW-103", "host": "10.255.255.103:4444", "tokenEnv": "SFOS_TOKEN_FW103", "pinSha256": ""}
+      ]
+    }

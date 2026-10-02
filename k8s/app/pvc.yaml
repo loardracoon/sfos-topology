@@ -1,0 +1,14 @@
+# Backs the two files the container writes at runtime: policy-matrix.json
+# (the access-policy matrix UI) and devices.secrets.json (Settings-managed
+# API keys, if SFOS_ADMIN_TOKEN is set). k3s's bundled local-path-provisioner
+# satisfies this with no extra setup.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sfos-app-data
+  namespace: sfos-topology
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 64Mi

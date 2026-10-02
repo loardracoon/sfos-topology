@@ -1,0 +1,18 @@
+# ClusterIP only, deliberately: the viewer has no authentication of its own
+# and shows a customer's internal addressing (same reasoning as the
+# 127.0.0.1-only port binding in docker-compose.yml). Expose it yourself via
+# `kubectl port-forward`, a NodePort, or an Ingress behind something that
+# authenticates -- not added here so it isn't exposed by accident.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sfos-topology
+  namespace: sfos-topology
+spec:
+  selector:
+    app: sfos-topology
+  ports:
+    - name: http
+      port: 8089
+      targetPort: http
+  type: ClusterIP
