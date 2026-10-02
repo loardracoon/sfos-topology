@@ -53,20 +53,26 @@ sync with git from then on.
 ## Checking it worked
 
 ```bash
-kubectl -n sfos-topology get pods,svc
+kubectl -n sfos-topology get pods,svc,ingress
 kubectl -n sfos-topology logs deploy/sfos-topology
 kubectl -n sfos-topology port-forward svc/sfos-topology 8089:8089
 # then open http://127.0.0.1:8089
 ```
 
-## Why no Ingress
+Live at **http://topology.sophizo.com.br** (`k8s/app/ingress.yaml`, Traefik --
+the same ingress class and pattern as the cluster's `wan-lab-manager` app).
 
-The Service is ClusterIP only. The viewer has no authentication of its own
-and renders a customer's internal addressing -- the same reasoning that
-keeps the Docker Compose deployment bound to `127.0.0.1`. Add an Ingress (or
-a NodePort) yourself once you've decided what sits in front of it
-authenticating requests; it's deliberately not done here so this never gets
-exposed by accident.
+## Exposure: open, by explicit choice
+
+The viewer has no authentication of its own and renders internal network
+addressing -- the same reasoning that keeps the Docker Compose deployment
+bound to `127.0.0.1`. For this cluster the call was made to expose it
+anyway, with no auth in front (no cert-manager is installed either, so it's
+HTTP only, matching `wan-lab-manager`'s own ingress). If that changes,
+either delete `k8s/app/ingress.yaml` to pull it back to ClusterIP-only, or
+add a Traefik `BasicAuth` (or `IPAllowList`) middleware and reference it
+from the Ingress's `traefik.ingress.kubernetes.io/router.middlewares`
+annotation -- no code change needed either way.
 
 ## Why `devices.json` is a ConfigMap but secrets aren't
 

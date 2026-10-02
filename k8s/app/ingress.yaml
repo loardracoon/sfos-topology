@@ -1,0 +1,23 @@
+# HTTP only, matching wan-lab-manager's own ingress (no cert-manager is
+# installed on this cluster yet) and the user's explicit choice: open, no
+# authentication in front. The viewer itself has none of its own and shows
+# internal network addressing -- that trade-off was made deliberately, not
+# by accident; see k8s/README.md.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sfos-topology
+  namespace: sfos-topology
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: topology.sophizo.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sfos-topology
+                port:
+                  number: 8089

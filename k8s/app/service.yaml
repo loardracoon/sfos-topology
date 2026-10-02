@@ -1,8 +1,7 @@
-# ClusterIP only, deliberately: the viewer has no authentication of its own
-# and shows a customer's internal addressing (same reasoning as the
-# 127.0.0.1-only port binding in docker-compose.yml). Expose it yourself via
-# `kubectl port-forward`, a NodePort, or an Ingress behind something that
-# authenticates -- not added here so it isn't exposed by accident.
+# ClusterIP: the Ingress (k8s/app/ingress.yaml) is what actually exposes
+# this externally at topology.sophizo.com.br, by explicit choice -- see that
+# file's comment and k8s/README.md for the trade-off (the viewer has no
+# authentication of its own).
 apiVersion: v1
 kind: Service
 metadata:
