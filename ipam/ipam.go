@@ -66,11 +66,23 @@ type Network struct {
 	NameSource string `json:"nameSource,omitempty"` // "address-object" when Name is set
 }
 
+// NetworkGroup is one candidate network a lookup resolved to: its identity
+// plus the memberships that belong to it. Ordinarily a Result has exactly
+// one; an E9 split segment produces two, each a distinct network that
+// genuinely claims the address, not one merged guess.
+type NetworkGroup struct {
+	Network Network      `json:"network"`
+	Members []Membership `json:"members"`
+}
+
 type Result struct {
-	IP       string       `json:"ip"`
-	Network  *Network     `json:"network,omitempty"`
-	Members  []Membership `json:"members,omitempty"`
-	Warnings []string     `json:"warnings,omitempty"`
+	IP string `json:"ip"`
+	// Networks is never empty on a Found result. Ambiguous is true exactly
+	// when it holds more than one entry, so a caller does not have to infer
+	// "collision" from the slice length.
+	Networks  []NetworkGroup `json:"networks"`
+	Ambiguous bool           `json:"ambiguous,omitempty"`
+	Warnings  []string       `json:"warnings,omitempty"`
 }
 
 type membership struct {
@@ -182,44 +194,63 @@ func (idx *Index) Lookup(raw string) (*Result, Status) {
 		return nil, NotFound
 	}
 
-	segIDs := map[string]bool{}
-	deviceIDs := map[string]bool{}
-	var members []Membership
-	var cidr string
+	// Group by segment rather than merging into one list: two segments can
+	// share the identical CIDR string after an E9 split precisely because
+	// they are NOT the same network, and a caller needs to be able to tell
+	// them apart, not just see a longer member list.
+	bySeg := map[string][]membership{}
+	var segOrder []string
 	for _, m := range idx.members {
 		if !m.prefix.Contains(addr) || m.prefix.Bits() != bestBits {
 			continue
 		}
-		segIDs[m.segID] = true
-		deviceIDs[m.dev.ID] = true
-		cidr = m.prefix.String()
-		iface := m.iface
-		if host, _, ok := strings.Cut(iface.Addr, "/"); ok {
-			if a, err := netip.ParseAddr(host); err == nil && a == addr {
-				iface.IsQueriedAddress = true
-			}
+		if _, ok := bySeg[m.segID]; !ok {
+			segOrder = append(segOrder, m.segID)
 		}
-		members = append(members, Membership{Device: m.dev, Interface: iface})
+		bySeg[m.segID] = append(bySeg[m.segID], m)
 	}
-	sort.Slice(members, func(i, j int) bool {
-		if members[i].Device.ID != members[j].Device.ID {
-			return members[i].Device.ID < members[j].Device.ID
-		}
-		return members[i].Interface.Name < members[j].Interface.Name
-	})
+	sort.Strings(segOrder)
 
-	res := &Result{
-		IP:      addr.String(),
-		Network: &Network{CIDR: cidr},
-		Members: members,
+	groups := make([]NetworkGroup, 0, len(segOrder))
+	for _, segID := range segOrder {
+		ms := bySeg[segID]
+		deviceIDs := map[string]bool{}
+		var members []Membership
+		var cidr string
+		for _, m := range ms {
+			deviceIDs[m.dev.ID] = true
+			cidr = m.prefix.String()
+			iface := m.iface
+			if host, _, ok := strings.Cut(iface.Addr, "/"); ok {
+				if a, err := netip.ParseAddr(host); err == nil && a == addr {
+					iface.IsQueriedAddress = true
+				}
+			}
+			members = append(members, Membership{Device: m.dev, Interface: iface})
+		}
+		sort.Slice(members, func(i, j int) bool {
+			if members[i].Device.ID != members[j].Device.ID {
+				return members[i].Device.ID < members[j].Device.ID
+			}
+			return members[i].Interface.Name < members[j].Interface.Name
+		})
+
+		net := Network{CIDR: cidr}
+		// Scoped to THIS segment's own devices, not the union across every
+		// matched segment -- an ambiguous lookup must never let an object
+		// from one candidate's device name the other candidate too.
+		if name, ok := idx.bestName(addr, deviceIDs); ok {
+			net.Name = name
+			net.NameSource = "address-object"
+		}
+		groups = append(groups, NetworkGroup{Network: net, Members: members})
 	}
-	if name, ok := idx.bestName(addr, deviceIDs); ok {
-		res.Network.Name = name
-		res.Network.NameSource = "address-object"
-	}
-	if len(segIDs) > 1 {
+
+	res := &Result{IP: addr.String(), Networks: groups}
+	if len(groups) > 1 {
+		res.Ambiguous = true
 		res.Warnings = append(res.Warnings,
-			"this prefix is split across more than one distinct network in the topology (duplicate address on the wire); members below are the union of all of them")
+			"this address matches more than one distinct network in the topology (duplicate/overlapping addressing across appliances) -- both candidates are shown below, neither was picked for you")
 	}
 	return res, Found
 }

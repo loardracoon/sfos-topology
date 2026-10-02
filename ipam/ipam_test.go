@@ -74,13 +74,17 @@ func TestLookupExactInterfaceAddress(t *testing.T) {
 	if status != Found {
 		t.Fatalf("status = %v, want Found", status)
 	}
-	if res.Network.CIDR != "192.168.101.0/24" {
-		t.Fatalf("cidr = %q", res.Network.CIDR)
+	if res.Ambiguous || len(res.Networks) != 1 {
+		t.Fatalf("networks = %+v, want exactly 1, not ambiguous", res.Networks)
 	}
-	if len(res.Members) != 1 {
-		t.Fatalf("members = %d, want 1", len(res.Members))
+	net := res.Networks[0]
+	if net.Network.CIDR != "192.168.101.0/24" {
+		t.Fatalf("cidr = %q", net.Network.CIDR)
 	}
-	m := res.Members[0]
+	if len(net.Members) != 1 {
+		t.Fatalf("members = %d, want 1", len(net.Members))
+	}
+	m := net.Members[0]
 	if m.Device.Label != "FW-LAB-01" || m.Interface.Name != "PortA" {
 		t.Fatalf("member = %+v", m)
 	}
@@ -98,23 +102,24 @@ func TestLookupNamesFromAddressObjects(t *testing.T) {
 	if status != Found {
 		t.Fatalf("status = %v", status)
 	}
-	if res.Network.Name != "LAN-Servers" || res.Network.NameSource != "address-object" {
-		t.Fatalf("network = %+v", res.Network)
+	net := res.Networks[0]
+	if net.Network.Name != "LAN-Servers" || net.Network.NameSource != "address-object" {
+		t.Fatalf("network = %+v", net.Network)
 	}
-	if res.Members[0].Interface.IsQueriedAddress {
+	if net.Members[0].Interface.IsQueriedAddress {
 		t.Error("192.168.101.50 is not PortA's own address")
 	}
 
 	// An exact IP host object beats the containing Network object.
 	res, _ = idx.Lookup("192.168.101.10")
-	if res.Network.Name != "DC-01" {
-		t.Fatalf("name = %q, want DC-01 (host beats network)", res.Network.Name)
+	if res.Networks[0].Network.Name != "DC-01" {
+		t.Fatalf("name = %q, want DC-01 (host beats network)", res.Networks[0].Network.Name)
 	}
 
 	// A range object names an address the Network object also contains.
 	res, _ = idx.Lookup("192.168.101.205")
-	if res.Network.Name != "Printer-Pool" {
-		t.Fatalf("name = %q, want Printer-Pool (range beats network)", res.Network.Name)
+	if res.Networks[0].Network.Name != "Printer-Pool" {
+		t.Fatalf("name = %q, want Printer-Pool (range beats network)", res.Networks[0].Network.Name)
 	}
 }
 
@@ -125,14 +130,15 @@ func TestLookupFallsBackToInterfaceWhenNoObjectMatches(t *testing.T) {
 	if status != Found {
 		t.Fatalf("status = %v", status)
 	}
-	if res.Network.Name != "" {
-		t.Fatalf("name = %q, want empty (no address object on this network)", res.Network.Name)
+	net := res.Networks[0]
+	if net.Network.Name != "" {
+		t.Fatalf("name = %q, want empty (no address object on this network)", net.Network.Name)
 	}
-	if res.Network.CIDR != "192.168.20.0/24" {
-		t.Fatalf("cidr = %q", res.Network.CIDR)
+	if net.Network.CIDR != "192.168.20.0/24" {
+		t.Fatalf("cidr = %q", net.Network.CIDR)
 	}
-	if len(res.Members) != 1 || res.Members[0].Interface.Name != "PortA" {
-		t.Fatalf("members = %+v", res.Members)
+	if len(net.Members) != 1 || net.Members[0].Interface.Name != "PortA" {
+		t.Fatalf("members = %+v", net.Members)
 	}
 }
 
@@ -143,8 +149,11 @@ func TestLookupMergedWANSegmentListsBothDevices(t *testing.T) {
 	if status != Found {
 		t.Fatalf("status = %v", status)
 	}
-	if len(res.Members) != 2 {
-		t.Fatalf("members = %d, want 2 (E3 merged both appliances onto one segment)", len(res.Members))
+	if res.Ambiguous || len(res.Networks) != 1 {
+		t.Fatalf("networks = %+v, want exactly 1 merged network, not ambiguous", res.Networks)
+	}
+	if len(res.Networks[0].Members) != 2 {
+		t.Fatalf("members = %d, want 2 (E3 merged both appliances onto one segment)", len(res.Networks[0].Members))
 	}
 }
 
@@ -168,14 +177,22 @@ func TestLookupWarnsOnASplitSegmentInsteadOfGuessing(t *testing.T) {
 	// Both segments genuinely claim the full 192.168.101.0/24 -- that is
 	// what the E9 split means -- so there is no honest way to say a generic
 	// address in it belongs to one appliance's network and not the other's.
-	// Showing both, with a warning, is correct; silently picking one would
-	// misrepresent the topology.
+	// Showing both, as two distinct candidates with a warning, is correct;
+	// silently merging or picking one would misrepresent the topology.
 	res, status := idx.Lookup("192.168.101.50")
 	if status != Found {
 		t.Fatalf("status = %v", status)
 	}
-	if len(res.Members) != 2 {
-		t.Fatalf("members = %d, want 2 (both split segments contain this address)", len(res.Members))
+	if !res.Ambiguous {
+		t.Error("expected Ambiguous = true for a split-segment collision")
+	}
+	if len(res.Networks) != 2 {
+		t.Fatalf("networks = %d, want 2 distinct candidates", len(res.Networks))
+	}
+	for _, n := range res.Networks {
+		if len(n.Members) != 1 {
+			t.Errorf("candidate %+v: members = %d, want 1 (one device per split segment)", n.Network, len(n.Members))
+		}
 	}
 	if len(res.Warnings) == 0 {
 		t.Error("expected a split-network warning")
@@ -197,8 +214,8 @@ func TestLookupIgnoresObjectsFromDevicesNotOnTheNetwork(t *testing.T) {
 	if status != Found {
 		t.Fatalf("status = %v", status)
 	}
-	if res.Network.Name != "LAN-Servers" {
-		t.Fatalf("name = %q, want LAN-Servers (FW-02's object is unrelated to this network)", res.Network.Name)
+	if res.Networks[0].Network.Name != "LAN-Servers" {
+		t.Fatalf("name = %q, want LAN-Servers (FW-02's object is unrelated to this network)", res.Networks[0].Network.Name)
 	}
 }
 
@@ -212,12 +229,12 @@ func TestLookupPrefersTheMostSpecificNetworkObject(t *testing.T) {
 	// contains 192.168.101.10 (DC-01): the narrowest match must win at every
 	// address that more than one object covers.
 	res, _ := idx.Lookup("192.168.101.10")
-	if res.Network.Name != "DC-01" {
-		t.Errorf("name = %q, want DC-01 (host beats /24 and /16)", res.Network.Name)
+	if res.Networks[0].Network.Name != "DC-01" {
+		t.Errorf("name = %q, want DC-01 (host beats /24 and /16)", res.Networks[0].Network.Name)
 	}
 	res, _ = idx.Lookup("192.168.101.50")
-	if res.Network.Name != "LAN-Servers" {
-		t.Errorf("name = %q, want LAN-Servers (/24 beats /16)", res.Network.Name)
+	if res.Networks[0].Network.Name != "LAN-Servers" {
+		t.Errorf("name = %q, want LAN-Servers (/24 beats /16)", res.Networks[0].Network.Name)
 	}
 }
 

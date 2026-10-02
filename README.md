@@ -13,13 +13,24 @@ No external dependencies. `go build ./...` works with a bare toolchain and no
 module proxy, which matters when the collector runs on a jump host inside a
 customer network.
 
+## Interface versions
+
+`/` and `/policy` serve the current interface (a deterministic, layered graph
+layout with an evidence-first inspector, plus a redesigned policy matrix — see
+`web/index.html`, `web/policy.html`, `web/app.css`, `web/graph.js`,
+`web/policy.js`, `web/fleet.js`). The previous interface remains reachable at
+`/v1` and `/v1/policy` (`web/v1/`), frozen as-is, for anyone mid-workflow with
+it open or who prefers it; each version links to the other. Both talk to the
+same collector process and the same `/api/*` surface — nothing about the
+backend or the Sophos-facing behavior differs between them.
+
 ## Quick start
 
 The lab fleet is already described in `devices.json`, with the API keys kept
 out of it in `lab.env`.
 
 ```bash
-make up       # build the image and serve the viewer on 127.0.0.1:8080
+make up       # build the image and serve the viewer on 127.0.0.1:8089
 make rebuild  # same, but without the build cache
 make logs     # follow the collector
 make down     # stop it
@@ -29,7 +40,7 @@ Without containers:
 
 ```bash
 make probe    # connect to each firewall, print its TLS fingerprint
-make serve    # collect everything and serve on 127.0.0.1:8080
+make serve    # collect everything and serve on 127.0.0.1:8089
 make run      # collect and write graph.json instead of serving
 make capture  # snapshot the raw API responses into captures/ for offline work
 ```
@@ -38,7 +49,7 @@ Those targets source `lab.env` for you. To run the binary by hand:
 
 ```bash
 set -a; . ./lab.env; set +a
-go run ./cmd/sfos-topology -config devices.json -serve 127.0.0.1:8080 -refresh 15m
+go run ./cmd/sfos-topology -config devices.json -serve 127.0.0.1:8089 -refresh 15m
 ```
 
 ## Containers
@@ -58,6 +69,12 @@ Two things are mounted or injected rather than baked in:
   entirely.
 - `devices.json` is mounted read-only, so adding a firewall is an edit and a
   restart rather than a rebuild.
+- `policy-matrix.json` is mounted **writable** — unlike `devices.json`, it
+  holds no credentials, only the access-policy design, and the matrix UI's
+  whole point is editing it live from the container. Create it once before
+  the first `docker compose up` (`echo '{"cells":[]}' > policy-matrix.json`):
+  Docker turns a missing bind-mount source file into a directory instead of
+  failing, which would otherwise break every later Save.
 
 `-refresh 15m` makes the container re-read the fleet on a timer. A failed pass
 keeps the previous graph on screen rather than blanking the page; the timestamp
@@ -133,6 +150,73 @@ Saving triggers an immediate re-collection (not a wait for the next
 added or edited fared, so a typo in the host or a stale key shows up right
 away instead of on the next scheduled pass.
 
+### Access policy matrix
+
+A second page, at **`/policy`** (linked from the viewer's top bar), designs
+firewall access-control policy as a network-by-network grid instead of a
+rule-by-rule form: click the cell where a source network's row meets a
+destination network's column, pick Allow or Deny (always "any service" —
+this is a macro switch, not a per-service rule builder), and optionally
+require Security Heartbeat and/or an authenticated user. A "bidirectional"
+checkbox creates the reverse cell too, as its own independent policy.
+
+The matrix's axes are every LAN/DMZ/management network the topology
+discovered, plus a single **Any** entry standing in for everything
+WAN-facing — an administrator writes a policy against "the internet," not
+against one specific ISP hand-off. Each axis label reads as the appliance
+and zone that actually calls it something (e.g. `[Firewall1] Employees` /
+`LAN:192.168.101.0/24`), not the bare CIDR — a network's number is not a
+name anyone recognizes.
+
+A cell's icon always summarizes *both* directions between that row and
+column, not just the one cell stored there, so the mirrored position on the
+other side of the diagonal reads consistently: a check mark is allow both
+ways, an X is deny both ways, `›`/`‹` is a one-way allow (pointing the way
+traffic actually flows), and `!` flags a genuine conflict — one direction
+allows, the other denies.
+
+**Fleet-wide, but only where a network is directly wired to a device.**
+The fleet can have many appliances; a policy only produces a rule preview
+on the appliances where at least one side is a network with an actual wire
+on it (the other side may be the universal Any). Two specific networks that
+live on different, unrelated appliances produce no rule anywhere — Phase 1
+does not yet infer reachability through an SD-WAN policy route on a third
+appliance; extending it needs that resource's schema confirmed against a
+live capture first, the same discipline documented below for
+`/network/addresses/ipv4`.
+
+**Save vs. Apply.** Clicking a cell and choosing Save only stores the design
+in `policy-matrix.json` and computes a preview: exactly which appliances it
+would touch, the rule name it would create or update on each (deterministic,
+so editing a cell later updates that rule instead of piling up duplicates),
+and whether a named address object already exists on that appliance for each
+side. **Apply** is a second, explicit step that actually calls the Sophos
+API: it creates any missing address object first, then creates or updates
+the real `/firewall/rules/ipv4` rule on every applicable appliance, and
+reports success or failure per device. It only ever acts on a cell that has
+already been saved. Both the rule and address-object write schemas were
+confirmed against a live create/inspect/delete cycle before this was built —
+the vendor's OpenAPI page for `/firewall/rules/ipv4` renders client-side and
+yields nothing on fetch, so this project captured the real request/response
+shape by hand (see `testdata/firewall-rules/`) rather than guess at a write
+endpoint that plants live security policy, a materially worse mistake to
+make quietly than guessing at a read endpoint's naming.
+
+A rule's `action` is only ever `accept` or `drop` (not "allow"/"deny" — that
+vocabulary is this project's own); Security Heartbeat and user-authentication
+restrictions are only ever set on an Allow rule's *source* side, since
+neither means anything once traffic is already dropped, and "Any" always
+resolves to a specific WAN zone with an Any *network* inside it, never an Any
+*zone* — matching every WAN-facing rule seen on a live capture and avoiding a
+far broader rule than "this network can reach the internet."
+
+Gated by the same `SFOS_ADMIN_TOKEN` as Settings (empty disables it,
+404-not-just-401, same reasoning), and persisted the same file-based way — a
+flat `policy-matrix.json` next to `devices.json`. Unlike Settings, though,
+this file holds no credentials, so the documented Docker deployment mounts
+it **writable** rather than treating it as host-managed like `devices.json`
+— see [Containers](#containers).
+
 ## Project layout
 
 ```
@@ -140,10 +224,14 @@ cmd/sfos-topology   CLI: collect, serve, probe, healthcheck
 sfos/               API client, types, offline replay
 topology/           graph model, orientation, correlation rules
 ipam/               address -> network/interface/device index and lookup
-web/                embedded single-file viewer, IPAM API, settings API
+policy/             network x network access-policy matrix and rule-intent preview
+web/                embedded HTTP handler (web.go) + IPAM/settings/policy APIs
+web/index.html, policy.html, app.css, graph.js, policy.js, fleet.js   current UI (/, /policy)
+web/v1/             previous UI, frozen (/v1, /v1/policy)
 capture.sh          raw endpoint snapshot for one appliance
 devices.json        the lab fleet
 devices.secrets.json  Settings-managed API keys (gitignored, mode 600; created on first use)
+policy-matrix.json  the access-policy matrix design (created on first use, no secrets)
 lab.env             API keys (gitignored, dockerignored, mode 600)
 Dockerfile          multi-stage build ending in scratch
 docker-compose.yml  the deployment
@@ -214,7 +302,7 @@ in the fleet — the name an administrator gave that network instead of its
 bare CIDR.
 
 ```bash
-curl http://127.0.0.1:8080/api/ipam/192.168.101.50
+curl http://127.0.0.1:8089/api/ipam/192.168.101.50
 ```
 
 ```json

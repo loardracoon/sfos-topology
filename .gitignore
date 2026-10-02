@@ -3,6 +3,7 @@ lab.env
 *.env
 !devices.example.json
 devices.secrets.json
+policy-matrix.json
 
 # Collector output and captures: both contain customer addressing
 graph.json

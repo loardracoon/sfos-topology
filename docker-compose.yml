@@ -14,22 +14,31 @@ services:
     # persist here even if enabled, and fails loudly rather than silently
     # doing nothing. It's a bare-binary / local-use feature; edit this file
     # from the host instead.
+    #
+    # policy-matrix.json is the opposite call: it holds no credentials, only
+    # the access-policy design, and the whole point of the matrix UI is
+    # editing it live -- so it is mounted writable, unlike devices.json,
+    # despite the read-only root filesystem below. Docker turns a missing
+    # bind-mount source file into a directory instead of failing, so the file
+    # must exist on the host before the first `docker compose up`:
+    #   echo '{"cells":[]}' > policy-matrix.json
     volumes:
       - ./devices.json:/app/devices.json:ro
+      - ./policy-matrix.json:/app/policy-matrix.json
 
     # Bound to loopback. This viewer shows a customer's internal addressing and
     # has no authentication of its own; publish it wider only behind something
     # that does.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8089:8089"
 
     command:
       - -config=/app/devices.json
-      - -serve=0.0.0.0:8080
+      - -serve=0.0.0.0:8089
       - -refresh=15m
 
     healthcheck:
-      test: ["CMD", "/sfos-topology", "-healthcheck", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "/sfos-topology", "-healthcheck", "http://127.0.0.1:8089/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

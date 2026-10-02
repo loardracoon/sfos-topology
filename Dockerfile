@@ -9,6 +9,7 @@ COPY cmd ./cmd
 COPY sfos ./sfos
 COPY topology ./topology
 COPY ipam ./ipam
+COPY policy ./policy
 COPY web ./web
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -23,7 +24,7 @@ COPY --from=build /out/sfos-topology /sfos-topology
 
 USER 65532:65532
 WORKDIR /app
-EXPOSE 8080
+EXPOSE 8089
 
 ENTRYPOINT ["/sfos-topology"]
-CMD ["-config", "/app/devices.json", "-serve", "0.0.0.0:8080", "-refresh", "15m"]
+CMD ["-config", "/app/devices.json", "-serve", "0.0.0.0:8089", "-refresh", "15m"]

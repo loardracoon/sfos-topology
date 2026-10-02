@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sfos-topology — Access policy matrix</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="policy-page">
+
+  <header class="g-header">
+    <span class="brand">sfos-topology</span>
+    <span class="crumb">/</span>
+    <span class="view-name">Access policy matrix</span>
+    <span class="eyebrow" id="pMeta" style="margin-left:1rem"></span>
+
+    <span class="g-spacer"></span>
+    <button type="button" class="outline" id="fleetBtn" hidden>Fleet</button>
+    <button type="button" class="primary" id="applyAllBtn" disabled title="Apply every saved policy for real, on every applicable firewall, in one action">Apply all</button>
+    <a class="outline" style="text-decoration:none;padding:.4rem .9rem;border-radius:999px;border:1px solid var(--hairline);font-size:.8rem" href="/">&larr; Graph</a>
+  </header>
+
+  <div id="pMain"></div>
+
+</div>
+<script type="module" src="/policy.js"></script>
+</body>
+</html>

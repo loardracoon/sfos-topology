@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Access policy matrix</title>
+<style>
+  :root {
+    color-scheme: light dark;
+
+    --paper:       #eef1f5;
+    --paper-line:  #dde3ea;
+    --surface:     #ffffff;
+    --surface-2:   #f3f5f8;
+    --ink:         #16222c;
+    --ink-soft:    #5b6b78;
+    --ink-faint:   #97a4ae;
+    --border:      #dde3ea;
+
+    --north:       #bf640f;
+    --north-wash:  #faead9;
+    --south:       #0f7490;
+    --south-wash:  #e1f0f4;
+    --overlay:     #6d4aa8;
+    --overlay-wash:#eee8f9;
+    --alert:       #bf3a28;
+    --alert-wash:  #fbe7e3;
+    --ok:          #1c8a5a;
+    --ok-wash:     #e2f4ec;
+
+    --shadow-1: 0 1px 2px rgba(20, 30, 40, 0.06);
+    --shadow-2: 0 6px 20px rgba(20, 30, 40, 0.10), 0 1px 3px rgba(20, 30, 40, 0.08);
+
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-pill: 999px;
+
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-data: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:       #0f151b;
+      --paper-line:  #1f2932;
+      --surface:     #161e26;
+      --surface-2:   #1c252e;
+      --ink:         #e8edf1;
+      --ink-soft:    #8fa0ac;
+      --ink-faint:   #5c6c78;
+      --border:      #263039;
+
+      --north:       #e0954e;
+      --north-wash:  #2a2015;
+      --south:       #52b8d4;
+      --south-wash:  #10262c;
+      --overlay:     #ab8fe0;
+      --overlay-wash:#241d33;
+      --alert:       #e2695a;
+      --alert-wash:  #2c1a17;
+      --ok:          #4fc491;
+      --ok-wash:     #12261e;
+
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+      --shadow-2: 0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: var(--font-ui);
+    color: var(--ink);
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-columns: 1fr 22rem;
+    grid-template-areas: "bar bar" "main panel";
+  }
+
+  .bar {
+    grid-area: bar;
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    padding: 0.65rem 1.1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
+    position: relative;
+    z-index: 1;
+  }
+  .bar h1 { margin: 0; font-family: var(--font-data); font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em; }
+  .bar .meta { font-family: var(--font-data); font-size: 0.72rem; color: var(--ink-soft); }
+  .bar .spacer { flex: 1; }
+  .bar a.nav {
+    font-size: 0.78rem; color: var(--ink-soft); text-decoration: none;
+    padding: 0.36rem 0.75rem; border-radius: var(--r-sm); border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .bar a.nav:hover { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-1); }
+
+  button {
+    font: inherit; font-size: 0.78rem; font-weight: 500; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 0.36rem 0.75rem; cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  }
+  button:hover { background: var(--surface); border-color: var(--ink-faint); box-shadow: var(--shadow-1); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  button.primary:hover { opacity: 0.9; }
+  button.danger { border-color: var(--alert); color: var(--alert); }
+  button:focus-visible { outline: 2px solid var(--overlay); outline-offset: 2px; }
+
+  .main { grid-area: main; overflow: auto; padding: 1.3rem; }
+
+  .banner {
+    border-left: 3px solid var(--overlay); background: var(--overlay-wash);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 0.6rem 0.9rem; margin-bottom: 1.1rem;
+    font-size: 0.82rem; line-height: 1.55; color: var(--ink-soft); max-width: 62rem;
+  }
+  .banner b { color: var(--ink); }
+
+  .center-msg { max-width: 30rem; margin: 3rem auto; text-align: center; color: var(--ink-soft); font-size: 0.9rem; line-height: 1.6; }
+  .center-msg .field { text-align: left; }
+
+  .field { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.8rem; }
+  .field label { font-size: 0.75rem; color: var(--ink-soft); }
+  .field input {
+    font: inherit; font-family: var(--font-data); font-size: 0.82rem;
+    color: var(--ink); background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--r-sm); padding: 0.45rem 0.6rem;
+  }
+  .field input:focus-visible { outline: 2px solid var(--overlay); outline-offset: 1px; }
+
+  /* width: 100% + table-layout: fixed makes the grid claim the whole
+     available width; the corner/row-label column gets a fixed share (set
+     via <colgroup>) and every network column splits the rest evenly, so
+     the matrix scales with the window instead of shrink-wrapping its
+     content. */
+  table.matrix { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 0.78rem; }
+  table.matrix th, table.matrix td { padding: 0; }
+  table.matrix th.corner {
+    position: sticky; top: 0; left: 0; z-index: 3; background: var(--paper);
+  }
+  table.matrix th.col {
+    position: sticky; top: 0; z-index: 2; background: var(--paper);
+    padding: 0.5rem 0.35rem; font-weight: 600; color: var(--ink-soft);
+    overflow-wrap: anywhere; text-align: center; vertical-align: bottom;
+    border-bottom: 1px solid var(--border);
+  }
+  table.matrix th.row {
+    position: sticky; left: 0; z-index: 2; background: var(--paper);
+    padding: 0.4rem 0.6rem 0.4rem 0.2rem; font-weight: 600; color: var(--ink-soft);
+    overflow-wrap: anywhere; text-align: right;
+    border-right: 1px solid var(--border); white-space: normal;
+  }
+  th.col .net-tag, th.row .net-tag { justify-content: center; }
+  th.row .net-tag { justify-content: flex-end; }
+  .net-tag { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.15rem; flex-wrap: wrap; }
+  .net-tag .fw {
+    display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em;
+    padding: 0.05rem 0.4rem; border-radius: var(--r-pill); background: var(--overlay-wash); color: var(--overlay);
+    white-space: nowrap;
+  }
+  .net-name { font-weight: 700; color: var(--ink); }
+  .net-sub { font-family: var(--font-data); font-size: 0.68rem; color: var(--ink-faint); font-weight: 500; }
+  th.row.any-row .net-name, th.col.any-col .net-name { font-style: italic; }
+
+  .cell {
+    width: 100%; aspect-ratio: 1 / 1; max-height: 54px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: 1px solid var(--paper-line); background: var(--surface);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+  }
+  .cell:hover { box-shadow: inset 0 0 0 2px var(--overlay); }
+  .cell.diag { cursor: default; background: var(--paper-line); opacity: 0.4; }
+  .cell.diag:hover { box-shadow: none; }
+  .cell.allow-bidi { background: var(--ok-wash); color: var(--ok); }
+  .cell.deny-bidi { background: var(--alert-wash); color: var(--alert); }
+  .cell.allow-one { background: var(--ok-wash); color: var(--ok); opacity: 0.75; }
+  .cell.deny-one { background: var(--alert-wash); color: var(--alert); opacity: 0.75; }
+  .cell.conflict { background: var(--north-wash); color: var(--north); }
+  .cell .mark { font-size: clamp(0.85rem, 1.4vw, 1.3rem); font-weight: 700; line-height: 1; }
+
+  .legend { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; font-size: 0.76rem; color: var(--ink-soft); margin-bottom: 1rem; }
+  .legend .ex {
+    display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem;
+    border-radius: 4px; margin-right: 0.35rem; font-weight: 700; font-size: 0.85rem; vertical-align: middle;
+  }
+
+  .panel {
+    grid-area: panel;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 1.1rem;
+  }
+  .panel h2 { margin: 0 0 0.15rem; font-family: var(--font-data); font-size: 1rem; font-weight: 700; word-break: break-word; }
+  .panel .kind { font-size: 0.75rem; color: var(--ink-soft); margin: 0 0 1.1rem; }
+  .panel section { margin-bottom: 1.3rem; }
+  .panel h3 {
+    margin: 0 0 0.6rem; font-size: 0.72rem; font-weight: 700; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .panel p { margin: 0 0 0.6rem; font-size: 0.82rem; line-height: 1.55; color: var(--ink-soft); }
+
+  .toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; margin-bottom: 0.6rem; cursor: pointer; }
+  .toggle input { margin: 0; accent-color: var(--overlay); }
+
+  .seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: 0.9rem; }
+  .seg button { background: transparent; border: none; box-shadow: none; border-radius: calc(var(--r-md) - 3px); flex: 1; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+
+  .device-row {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 0.55rem 0.7rem; margin-bottom: 0.5rem; font-size: 0.78rem;
+  }
+  .device-row .n { font-family: var(--font-data); font-weight: 600; }
+  .device-row .z { color: var(--ink-soft); margin-top: 0.15rem; }
+  .tag {
+    display: inline-block; font-size: 0.66rem; padding: 0.05rem 0.45rem;
+    border: 1px solid var(--border); border-radius: var(--r-pill); color: var(--ink-soft); background: var(--surface);
+  }
+  .tag.warn { border-color: var(--alert); color: var(--alert); }
+  .tag.ok { border-color: var(--ok); color: var(--ok); }
+
+  .settings-error {
+    border-left: 3px solid var(--alert); background: var(--alert-wash);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 0.5rem 0.7rem; margin-bottom: 0.9rem; font-size: 0.8rem; line-height: 1.5;
+  }
+  .settings-ok {
+    border-left: 3px solid var(--ok); background: var(--ok-wash);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 0.5rem 0.7rem; margin-bottom: 0.9rem; font-size: 0.8rem; line-height: 1.5;
+  }
+  .settings-error ul, .settings-ok ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; grid-template-areas: "bar" "main" "panel"; }
+    .panel { border-left: none; border-top: 1px solid var(--border); max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>Access policy matrix</h1>
+  <span class="meta" id="meta"></span>
+  <span class="spacer"></span>
+  <button id="applyAllBtn" type="button" disabled title="Apply every saved policy for real, on every applicable firewall, in one action">Apply all</button>
+  <a class="nav" href="/v1">&larr; Topology</a>
+  <a class="nav" href="/policy" title="Try the new interface">Try the new UI &rarr;</a>
+</header>
+
+<div class="main" id="main"></div>
+<aside class="panel" id="panel"></aside>
+
+<script>
+"use strict";
+
+const mainEl      = document.getElementById("main");
+const panel       = document.getElementById("panel");
+const meta        = document.getElementById("meta");
+const applyAllBtn = document.getElementById("applyAllBtn");
+
+let adminToken = sessionStorage.getItem("sfos-admin-token") || "";
+let doc = null;          // { networks, cells }
+let selected = null;     // { source, destination }
+// cellApplyResults holds every cell's last Apply outcome, keyed by
+// cellKey(source, destination), so a single Apply and Apply all populate the
+// same place and either one's status survives navigating the matrix.
+let cellApplyResults = {};
+
+const cellKey = (source, destination) => `${source}>${destination}`;
+
+function updateApplyAllButton() {
+  const count = doc ? (doc.cells || []).length : 0;
+  applyAllBtn.disabled = count === 0;
+  applyAllBtn.textContent = count ? `Apply all (${count})` : "Apply all";
+}
+
+const h = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+async function apiFetch(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers, { "X-Admin-Token": adminToken });
+  if (opts.body) headers["Content-Type"] = "application/json";
+  let res;
+  try {
+    res = await fetch(path, Object.assign({}, opts, { headers }));
+  } catch (err) {
+    return { ok: false, status: 0, body: { error: "could not reach the server" } };
+  }
+  let body = null;
+  try { body = await res.json(); } catch (err) { /* no/invalid body */ }
+  return { ok: res.ok, status: res.status, body };
+}
+
+function cellFor(source, destination) {
+  return (doc.cells || []).find(c => c.source === source && c.destination === destination);
+}
+
+function load() {
+  mainEl.replaceChildren(h("p", "center-msg", "Loading…"));
+  panel.replaceChildren();
+  if (!adminToken) { showTokenPrompt(); return; }
+
+  apiFetch("/api/policy").then(({ ok, status, body }) => {
+    if (status === 404) { showDisabled(); return; }
+    if (status === 401) {
+      adminToken = "";
+      sessionStorage.removeItem("sfos-admin-token");
+      showTokenPrompt("That token was rejected.");
+      return;
+    }
+    if (!ok) { showError((body && body.error) || `HTTP ${status}`); return; }
+    doc = body;
+    meta.textContent = `${doc.networks.length} networks · ${(doc.cells || []).length} policies`;
+    updateApplyAllButton();
+    renderMatrix();
+    renderPanel();
+  });
+}
+
+function showTokenPrompt(message) {
+  const wrap = h("div", "center-msg");
+  if (message) wrap.append(h("div", "settings-error", message));
+  wrap.append(h("p", null,
+    "This page needs the same admin token the viewer's Settings panel uses " +
+    "(the SFOS_ADMIN_TOKEN environment variable the server was started with)."));
+  const field = h("div", "field");
+  const lab = h("label", null, "Admin token");
+  field.append(lab);
+  const input = document.createElement("input");
+  input.type = "password";
+  input.placeholder = "••••••••";
+  field.append(input);
+  wrap.append(field);
+  const go = h("button", "primary", "Continue");
+  go.type = "button";
+  go.addEventListener("click", () => {
+    const v = input.value.trim();
+    if (!v) return;
+    adminToken = v;
+    sessionStorage.setItem("sfos-admin-token", adminToken);
+    load();
+  });
+  input.addEventListener("keydown", ev => { if (ev.key === "Enter") go.click(); });
+  wrap.append(go);
+  mainEl.replaceChildren(wrap);
+}
+
+function showDisabled() {
+  mainEl.replaceChildren(h("p", "center-msg",
+    "The policy matrix is disabled on this server. Set SFOS_ADMIN_TOKEN in its " +
+    "environment and restart the collector to enable it."));
+}
+
+function showError(msg) {
+  mainEl.replaceChildren(h("div", "settings-error", msg));
+}
+
+// netHeader builds the multi-line header content for one axis entry:
+// [Firewall tag(s)] Zone name, then a ZONETYPE:CIDR subtitle -- a network's
+// bare CIDR is not a name anyone recognizes, but "Firewall1 / Employees" is.
+function netHeader(n) {
+  const wrap = document.createElement("div");
+  const tagLine = h("div", "net-tag");
+  const members = n.members || [];
+  if (members.length) {
+    for (const fw of [...new Set(members.map(m => m.deviceLabel))]) {
+      tagLine.append(h("span", "fw", fw));
+    }
+    tagLine.append(h("span", "net-name", [...new Set(members.map(m => m.zoneName))].join(" / ")));
+  } else {
+    tagLine.append(h("span", "net-name", n.label));
+  }
+  wrap.append(tagLine);
+
+  if (members.length) {
+    const types = [...new Set(members.map(m => m.zoneType.toUpperCase()))].join("/");
+    wrap.append(h("div", "net-sub", `${types}:${n.cidr}`));
+  } else if (n.cidr) {
+    wrap.append(h("div", "net-sub", n.cidr));
+  }
+  return wrap;
+}
+
+// netLabel is the plain-text equivalent of netHeader, for titles, tooltips
+// and confirm dialogs that can't hold markup.
+function netLabel(id) {
+  const n = (doc.networks || []).find(x => x.id === id);
+  if (!n) return id;
+  const members = n.members || [];
+  if (!members.length) return n.label;
+  const fws = [...new Set(members.map(m => m.deviceLabel))].join(", ");
+  const names = [...new Set(members.map(m => m.zoneName))].join("/");
+  return `[${fws}] ${names}`;
+}
+
+// cellIcon decides what one grid position shows by looking at BOTH
+// directions between that row and column, not just the one cell stored at
+// (row, col) -- the visual glyph always summarizes the pair, so the mirror
+// position renders consistently instead of two independently-drawn arrows
+// that could contradict each other.
+function cellIcon(rowID, colID) {
+  const fwd = cellFor(rowID, colID);   // row -> col
+  const rev = cellFor(colID, rowID);   // col -> row
+
+  if (fwd && rev) {
+    if (fwd.action === "deny" && rev.action === "deny") return { glyph: "✕", cls: "deny-bidi", title: "Deny (bidirectional)" };
+    if (fwd.action === "allow" && rev.action === "allow") return { glyph: "✓", cls: "allow-bidi", title: "Allow (bidirectional)" };
+    return { glyph: "!", cls: "conflict", title: "Conflicting: one direction allows, the other denies" };
+  }
+  if (fwd) {
+    return fwd.action === "allow"
+      ? { glyph: "›", cls: "allow-one", title: "Allow: row → column only" }
+      : { glyph: "›", cls: "deny-one", title: "Deny: row → column only" };
+  }
+  if (rev) {
+    return rev.action === "allow"
+      ? { glyph: "‹", cls: "allow-one", title: "Allow: column → row only" }
+      : { glyph: "‹", cls: "deny-one", title: "Deny: column → row only" };
+  }
+  return { glyph: "·", cls: "", title: "No policy" };
+}
+
+function renderMatrix() {
+  const frag = document.createDocumentFragment();
+
+  const banner = h("div", "banner");
+  banner.innerHTML =
+    "Clicking a cell designs a policy and shows exactly which firewalls it would touch and " +
+    "what rule it would create on each. <b>Save changes</b> only stores the design here; " +
+    "<b>Apply</b> actually creates or updates the real rule (and any missing address object) " +
+    "on every applicable appliance.";
+  frag.append(banner);
+
+  const legend = h("div", "legend");
+  const legendItem = (glyph, cls, text) => {
+    const span = document.createElement("span");
+    const ex = h("span", "ex cell " + cls, glyph);
+    ex.style.display = "inline-flex";
+    span.append(ex, document.createTextNode(" " + text));
+    return span;
+  };
+  legend.append(
+    legendItem("✓", "allow-bidi", "Allow, both directions"),
+    legendItem("✕", "deny-bidi", "Deny, both directions"),
+    legendItem("›", "allow-one", "Allow, row → column only"),
+    legendItem("‹", "allow-one", "Allow, column → row only"),
+    legendItem("!", "conflict", "Conflict: allow one way, deny the other"),
+    h("span", null, "Click a cell to design or edit its policy.")
+  );
+  frag.append(legend);
+
+  const nets = doc.networks;
+  const table = h("table", "matrix");
+
+  const colgroup = document.createElement("colgroup");
+  const firstCol = document.createElement("col");
+  firstCol.style.width = "13rem";
+  colgroup.append(firstCol);
+  for (const _ of nets) colgroup.append(document.createElement("col"));
+  table.append(colgroup);
+
+  const thead = h("thead");
+  const headRow = h("tr");
+  headRow.append(h("th", "corner"));
+  for (const n of nets) {
+    const th = h("th", "col" + (n.isAny ? " any-col" : ""));
+    th.append(netHeader(n));
+    headRow.append(th);
+  }
+  thead.append(headRow);
+  table.append(thead);
+
+  const tbody = h("tbody");
+  for (const rowNet of nets) {
+    const tr = h("tr");
+    const rowTh = h("th", "row" + (rowNet.isAny ? " any-row" : ""));
+    rowTh.append(netHeader(rowNet));
+    tr.append(rowTh);
+
+    for (const colNet of nets) {
+      const td = document.createElement("td");
+      if (rowNet.id === colNet.id) {
+        const div = h("div", "cell diag");
+        td.append(div);
+        tr.append(td);
+        continue;
+      }
+      const icon = cellIcon(rowNet.id, colNet.id);
+      const div = h("div", "cell" + (icon.cls ? " " + icon.cls : ""));
+      div.append(h("span", "mark", icon.glyph));
+      div.title = `${netLabel(rowNet.id)} ↔ ${netLabel(colNet.id)} — ${icon.title}`;
+      div.addEventListener("click", () => {
+        selected = { source: rowNet.id, destination: colNet.id };
+        renderPanel();
+      });
+      td.append(div);
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  frag.append(table);
+
+  mainEl.replaceChildren(frag);
+}
+
+function renderPanel() {
+  if (!selected) {
+    panel.replaceChildren(
+      h("h2", null, "Nothing selected"),
+      h("p", "kind", "Click a cell in the matrix to design or edit its policy.")
+    );
+    return;
+  }
+
+  const { source, destination } = selected;
+  const existing = cellFor(source, destination);
+  const reverse = cellFor(destination, source);
+
+  const frag = document.createDocumentFragment();
+  frag.append(h("h2", null, `${netLabel(source)} → ${netLabel(destination)}`));
+  frag.append(h("p", "kind", existing ? `Currently: ${existing.action}` : "No policy defined yet"));
+
+  const s1 = h("section");
+  const actionSeg = h("div", "seg");
+  const allowBtn = h("button", null, "Allow");
+  const denyBtn = h("button", null, "Deny");
+  let action = existing ? existing.action : "allow";
+  const paintSeg = () => {
+    allowBtn.setAttribute("aria-pressed", String(action === "allow"));
+    denyBtn.setAttribute("aria-pressed", String(action === "deny"));
+  };
+  allowBtn.type = "button"; denyBtn.type = "button";
+  allowBtn.addEventListener("click", () => { action = "allow"; paintSeg(); });
+  denyBtn.addEventListener("click", () => { action = "deny"; paintSeg(); });
+  actionSeg.append(allowBtn, denyBtn);
+  paintSeg();
+  s1.append(actionSeg);
+
+  const hbLabel = h("label", "toggle");
+  const hbInput = document.createElement("input");
+  hbInput.type = "checkbox";
+  hbInput.checked = existing ? existing.requireHeartbeat : false;
+  hbLabel.append(hbInput, document.createTextNode("Require Security Heartbeat"));
+  s1.append(hbLabel);
+
+  const authLabel = h("label", "toggle");
+  const authInput = document.createElement("input");
+  authInput.type = "checkbox";
+  authInput.checked = existing ? existing.requireAuth : false;
+  authLabel.append(authInput, document.createTextNode("Require authenticated user"));
+  s1.append(authLabel);
+
+  const bidiLabel = h("label", "toggle");
+  const bidiInput = document.createElement("input");
+  bidiInput.type = "checkbox";
+  bidiInput.checked = false;
+  bidiLabel.append(bidiInput, document.createTextNode(
+    reverse ? "Also overwrite the reverse policy with these same settings" : "Also create the reverse policy (bidirectional)"
+  ));
+  s1.append(bidiLabel);
+
+  const actions = h("div", "form-actions");
+  actions.style.display = "flex";
+  actions.style.gap = "0.5rem";
+  actions.style.marginTop = "0.7rem";
+  const save = h("button", "primary", existing ? "Save changes" : "Create policy");
+  save.type = "button";
+  save.addEventListener("click", () => {
+    save.disabled = true;
+    apiFetch("/api/policy/cell", {
+      method: "PUT",
+      body: JSON.stringify({
+        source, destination, action,
+        requireHeartbeat: hbInput.checked,
+        requireAuth: authInput.checked,
+        bidi: bidiInput.checked
+      })
+    }).then(({ ok, status, body }) => {
+      save.disabled = false;
+      if (!ok) { renderPanelError((body && body.error) || `HTTP ${status}`); return; }
+      doc = body;
+      delete cellApplyResults[cellKey(source, destination)];
+      meta.textContent = `${doc.networks.length} networks · ${(doc.cells || []).length} policies`;
+      updateApplyAllButton();
+      renderMatrix();
+      renderPanel();
+    });
+  });
+  actions.append(save);
+
+  if (existing) {
+    const del = h("button", "danger", "Delete");
+    del.type = "button";
+    del.addEventListener("click", () => {
+      if (!confirm(`Remove the policy ${netLabel(source)} → ${netLabel(destination)}?`)) return;
+      const q = new URLSearchParams({ source, destination });
+      apiFetch("/api/policy/cell?" + q.toString(), { method: "DELETE" }).then(({ ok, status, body }) => {
+        if (!ok) { renderPanelError((body && body.error) || `HTTP ${status}`); return; }
+        doc = body;
+        delete cellApplyResults[cellKey(source, destination)];
+        meta.textContent = `${doc.networks.length} networks · ${(doc.cells || []).length} policies`;
+        updateApplyAllButton();
+        selected = null;
+        renderMatrix();
+        renderPanel();
+      });
+    });
+    actions.append(del);
+
+    const apply = h("button", null, "Apply");
+    apply.type = "button";
+    apply.title = "Create or update the real rule (and any missing address object) on every applicable firewall";
+    apply.addEventListener("click", () => {
+      if (!confirm(
+        `Apply ${netLabel(source)} → ${netLabel(destination)} (${existing.action}) for real?\n\n` +
+        "This creates or updates a live firewall rule -- and any missing address object -- " +
+        "on every applicable appliance."
+      )) return;
+      apply.disabled = true;
+      const q = new URLSearchParams({ source, destination });
+      apiFetch("/api/policy/apply?" + q.toString(), { method: "POST" }).then(({ ok, status, body }) => {
+        apply.disabled = false;
+        if (!ok) { renderPanelError((body && body.error) || `HTTP ${status}`); return; }
+        cellApplyResults[cellKey(source, destination)] = body.results || [];
+        renderPanel();
+      });
+    });
+    actions.append(apply);
+  }
+  s1.append(actions);
+  frag.append(s1);
+
+  const intents = existing ? existing.intents : [];
+  const applied = cellApplyResults[cellKey(source, destination)] || [];
+  const s2 = h("section");
+  s2.append(h("h3", null, "Rule preview"));
+  if (!existing) {
+    s2.append(h("p", null, "Set a policy above to see which firewalls it would touch."));
+  } else if (!intents || !intents.length) {
+    s2.append(h("p", null,
+      "No firewall has both networks directly connected (or one side plus Any), " +
+      "so Phase 1 would not create a rule anywhere for this pair yet."));
+  } else {
+    for (const it of intents) {
+      const row = h("div", "device-row");
+      const n = h("div", "n", `${it.device.label} — ${it.ruleName}`);
+      row.append(n);
+      const z = h("div", "z", `${it.sourceLabel} → ${it.destLabel} · ${it.service} · ${it.action}`);
+      row.append(z);
+      const tags = h("div");
+      tags.style.marginTop = "0.3rem";
+      if (it.requireHeartbeat) tags.append(h("span", "tag", "heartbeat"));
+      if (it.requireAuth) { tags.append(document.createTextNode(" ")); tags.append(h("span", "tag", "user auth")); }
+      if (!it.sourceObjectExists) { tags.append(document.createTextNode(" ")); tags.append(h("span", "tag warn", "would create source object")); }
+      if (!it.destObjectExists) { tags.append(document.createTextNode(" ")); tags.append(h("span", "tag warn", "would create dest object")); }
+      if (it.sourceObjectExists && it.destObjectExists) tags.append(h("span", "tag ok", "objects already exist"));
+
+      const result = applied.find(r => r.device === it.device.label);
+      if (result) {
+        tags.append(document.createTextNode(" "));
+        if (result.status === "error") {
+          tags.append(h("span", "tag warn", `apply failed: ${result.error}`));
+        } else {
+          tags.append(h("span", "tag ok", `applied (${result.status})`));
+        }
+      }
+      if (tags.childNodes.length) row.append(tags);
+      s2.append(row);
+    }
+  }
+  frag.append(s2);
+
+  panel.replaceChildren(frag);
+}
+
+function renderPanelError(msg) {
+  const e = h("div", "settings-error", msg);
+  panel.prepend(e);
+  setTimeout(() => e.remove(), 4000);
+}
+
+// renderApplyAllSummary reports what "Apply all" just did across every saved
+// cell -- one line per policy would be too noisy at fleet scale, so this
+// rolls up to a single success/fail count and lists only the failures, each
+// naming the policy, the device and the actual error so a partial failure is
+// still actionable without opening every cell one by one.
+function renderApplyAllSummary(results) {
+  let ok = 0, failed = 0;
+  const failures = [];
+  for (const cell of results) {
+    for (const r of cell.results) {
+      if (r.status === "error") {
+        failed++;
+        failures.push(`${netLabel(cell.source)} → ${netLabel(cell.destination)} on ${r.device}: ${r.error}`);
+      } else {
+        ok++;
+      }
+    }
+  }
+  const total = ok + failed;
+  const div = h("div", failed ? "settings-error" : "settings-ok");
+  const policies = results.length;
+  div.append(h("div", null,
+    total
+      ? `Apply all: ${ok}/${total} rule${total === 1 ? "" : "s"} applied across ${policies} polic${policies === 1 ? "y" : "ies"}.`
+      : `Apply all: none of the ${policies} saved polic${policies === 1 ? "y" : "ies"} touched any firewall (no directly-connected device on either side).`
+  ));
+  if (failures.length) {
+    const list = document.createElement("ul");
+    for (const line of failures) list.append(h("li", null, line));
+    div.append(list);
+  }
+  mainEl.prepend(div);
+}
+
+const applyAllHandler = () => {
+  const count = (doc.cells || []).length;
+  if (!confirm(
+    `Apply all ${count} saved polic${count === 1 ? "y" : "ies"} for real?\n\n` +
+    "This creates or updates a live firewall rule -- and any missing address object -- " +
+    "on every applicable appliance, for every policy currently saved in the matrix."
+  )) return;
+  applyAllBtn.disabled = true;
+  apiFetch("/api/policy/apply-all", { method: "POST" }).then(({ ok, status, body }) => {
+    updateApplyAllButton();
+    if (!ok) { showError((body && body.error) || `HTTP ${status}`); return; }
+    for (const cell of body.results || []) {
+      cellApplyResults[cellKey(cell.source, cell.destination)] = cell.results;
+    }
+    renderApplyAllSummary(body.results || []);
+    renderPanel();
+  });
+};
+applyAllBtn.addEventListener("click", applyAllHandler);
+
+load();
+</script>
+</body>
+</html>

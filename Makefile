@@ -18,7 +18,7 @@ run: build
 
 # Same, then serves the viewer with the graph already loaded.
 serve: build
-	set -a; . ./lab.env; set +a; ./$(BIN) -config devices.json -serve 127.0.0.1:8080
+	set -a; . ./lab.env; set +a; ./$(BIN) -config devices.json -serve 127.0.0.1:8089
 
 # Connects to each appliance and prints its TLS fingerprint. Paste the value
 # into pinSha256 in devices.json once you have confirmed it.
@@ -41,14 +41,14 @@ image:
 
 up:
 	docker compose up -d --build
-	@echo "viewer on http://127.0.0.1:8080"
+	@echo "viewer on http://127.0.0.1:8089"
 
 # Use this after changing the Dockerfile or .dockerignore: a cached COPY layer
 # would otherwise be reused and keep a stale build context.
 rebuild:
 	docker compose build --no-cache
 	docker compose up -d
-	@echo "viewer on http://127.0.0.1:8080"
+	@echo "viewer on http://127.0.0.1:8089"
 
 down:
 	docker compose down

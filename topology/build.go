@@ -68,6 +68,10 @@ type Node struct {
 
 	// Cloud fields
 	GatewayIP string `json:"gatewayIp,omitempty"`
+	// GatewayCIDR is GatewayIP with the prefix length of the local WAN
+	// interface it was read from (the gateway itself carries no prefix of
+	// its own -- it shares the interface's subnet). Display-only.
+	GatewayCIDR string `json:"gatewayCidr,omitempty"`
 
 	Orientation Orientation `json:"orientation,omitempty"`
 	Warnings    []string    `json:"warnings,omitempty"`
@@ -464,9 +468,13 @@ func Build(snaps []*sfos.Snapshot) *Graph {
 				if label == "" {
 					label = f.GatewayIP
 				}
+				gatewayCIDR := f.GatewayIP
+				if _, bitsStr, ok := strings.Cut(f.Addr, "/"); ok {
+					gatewayCIDR = f.GatewayIP + "/" + bitsStr
+				}
 				g.Nodes = append(g.Nodes, Node{
 					ID: cloudID, Kind: KindCloud, Label: label,
-					Orientation: North, GatewayIP: f.GatewayIP,
+					Orientation: North, GatewayIP: f.GatewayIP, GatewayCIDR: gatewayCIDR,
 				})
 			}
 			from := segIDOf[f.id()]
@@ -487,7 +495,7 @@ func Build(snaps []*sfos.Snapshot) *Graph {
 			cloudEdge[from+"->"+cloudID] = len(g.Edges)
 			g.Edges = append(g.Edges, Edge{
 				From: from, To: cloudID, Orientation: North, Confidence: Confirmed,
-				Label:    f.GatewayName,
+				Label:    f.Name,
 				Evidence: []Evidence{ev},
 			})
 		}
@@ -583,6 +591,7 @@ func Build(snaps []*sfos.Snapshot) *Graph {
 			}
 			// Attach the ghost to the segment that contains its address.
 			attach := id
+			viaIface := ""
 			for _, f := range ifacesByDevice[id] {
 				if f.Addr == "" {
 					continue
@@ -599,12 +608,20 @@ func Build(snaps []*sfos.Snapshot) *Graph {
 					if sid := segIDOf[f.id()]; sid != "" {
 						attach = sid
 					}
+					viaIface = f.Name
 					break
 				}
 			}
+			// Prefer the physical interface the route goes out of; fall back
+			// to the destination prefix when no local interface matched (the
+			// route's next hop is reachable through more than one hop).
+			label := fmt.Sprintf("%s/%d", r.DestinationAddressIPv4, r.CIDR)
+			if viaIface != "" {
+				label = viaIface
+			}
 			g.Edges = append(g.Edges, Edge{
 				From: attach, To: ghostID, Orientation: South, Confidence: Inferred,
-				Label: fmt.Sprintf("%s/%d", r.DestinationAddressIPv4, r.CIDR),
+				Label: label,
 				Evidence: []Evidence{{
 					Rule:   "E6",
 					Detail: fmt.Sprintf("static route %s/%d via %s on %s", r.DestinationAddressIPv4, r.CIDR, gw, id),
