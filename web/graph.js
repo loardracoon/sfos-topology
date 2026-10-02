@@ -26,10 +26,14 @@ function escapeHtmlSafe(s) { return String(s || "").replace(/[&<>"']/g, c => ({ 
 
 const STAGE_W = 1440;
 const GUTTER = 16;
+// Firewalls get noticeably more breathing room than other ranks: each one
+// anchors its own subtree of segments/clouds, so a tight gutter there reads
+// as clutter even when the ranks above/below are fine at the default.
+const GUTTER_DEVICE = 72;
 // Overlay mode drops every rank but devices down to a single row of tunnel
-// endpoints -- the tight underlay gutter then reads as crowded, so devices
-// get extra breathing room specifically in that mode.
-const GUTTER_OVERLAY_DEVICE = 96;
+// endpoints -- gutter needs to be wider still there, since the VPN mesh
+// above also has to fit between adjacent devices.
+const GUTTER_OVERLAY_DEVICE = 128;
 
 // Underlay rank Y positions, top to bottom, per the spec.
 const RANK_Y_UNDERLAY = { world: 56, cloud: 172, segNorth: 288, device: 414, segSouth: 552, gateway: 676 };
@@ -232,18 +236,33 @@ function buildModel(raw) {
     nodes.push(rec);
   }
 
-  const edges = (raw.graph.edges || []).map((e, i) => ({
-    id: "e" + i, a: e.from, b: e.to,
-    overlay: e.orientation === "overlay",
-    confidence: e.confidence,
-    label: e.label || "",
-    rule: (e.evidence && e.evidence.length) ? e.evidence[e.evidence.length - 1].rule : "?",
-    evidence: (e.evidence || []).map(ev => ({
-      rule: ev.rule, confidence: e.confidence,
-      what: RULE_EXPLAIN[ev.rule] || "A correlation rule fired for this connection.",
-      quote: ev.detail,
-    })),
-  }));
+  const edges = (raw.graph.edges || []).map((e, i) => {
+    const aRaw = nodesById.get(e.from), bRaw = nodesById.get(e.to);
+    // The interface name an edge's Label carries only means something next
+    // to a firewall -- a segment -> cloud or segment -> gateway edge reuses
+    // the same string (a gateway/route name) for an entirely different
+    // reason, and repeating it there reads as the same interface showing up
+    // twice. Only an edge with a device on one end gets a tag at all; CIDR
+    // and zone (shown on hover) come from that device's own matching
+    // interface, confirmed straight from its own config.
+    const deviceNode = aRaw?.kind === "device" ? aRaw : bRaw?.kind === "device" ? bRaw : null;
+    const iface = deviceNode ? (deviceNode.interfaces || []).find(f => f.name === e.label) : null;
+    return {
+      id: "e" + i, a: e.from, b: e.to,
+      overlay: e.orientation === "overlay",
+      confidence: e.confidence,
+      label: e.label || "",
+      showTag: !!deviceNode,
+      ifaceCidr: iface && iface.addr ? iface.addr : "",
+      ifaceZone: iface && iface.zoneName ? `${iface.zoneName}${iface.zoneType ? " (" + iface.zoneType + ")" : ""}` : "",
+      rule: (e.evidence && e.evidence.length) ? e.evidence[e.evidence.length - 1].rule : "?",
+      evidence: (e.evidence || []).map(ev => ({
+        rule: ev.rule, confidence: e.confidence,
+        what: RULE_EXPLAIN[ev.rule] || "A correlation rule fired for this connection.",
+        quote: ev.detail,
+      })),
+    };
+  });
 
   return { nodesById: new Map(nodes.map(n => [n.id, n])), nodes, edges, staleLabels: [...staleLabels] };
 }
@@ -295,7 +314,7 @@ function computeLayout(m) {
     });
 
     const widths = withKey.map(w => estimateWidth(w.n.label, w.n.kind));
-    const gutter = (projection === "overlay" && r === 3) ? GUTTER_OVERLAY_DEVICE : GUTTER;
+    const gutter = r === 3 ? (projection === "overlay" ? GUTTER_OVERLAY_DEVICE : GUTTER_DEVICE) : GUTTER;
     const totalW = widths.reduce((a, b) => a + b, 0) + gutter * Math.max(0, widths.length - 1);
     let x = (STAGE_W - totalW) / 2;
     withKey.forEach((w, i) => {
@@ -451,10 +470,12 @@ function renderEdges() {
     if (!edgeMatchesProjection(e)) continue;
     // The tag shows the physical interface the edge was read from (e.g.
     // "PortB", or "PortB ↔ PortA" for a tunnel pair) rather than the rule
-    // code -- an analyst reads a port name, not a correlator internal. An
-    // edge with no interface to name (e.g. the cloud -> world convergence
-    // edge) gets no tag at all instead of a bare "?".
-    if (!e.label) continue;
+    // code -- an analyst reads a port name, not a correlator internal. Only
+    // an edge touching an actual firewall gets one: a segment -> cloud or
+    // segment -> gateway edge's Label is a gateway/route name, not an
+    // interface, and showing it reads as the same interface appearing a
+    // second time where there isn't one.
+    if (!e.showTag || !e.label) continue;
     const mx = (pa.x + pb.x) / 2;
     const my = e.overlay
       ? Math.min(pa.y, pb.y) - (tunnelDips.get(e.id) || TUNNEL_DIP_BASE) * 0.55
@@ -587,10 +608,15 @@ function confPillHtml(conf) {
 }
 function showNodeTooltip(target, n) {
   positionTooltip(target);
+  // A segment node is literally defined by its member interface(s) -- CIDR
+  // alone leaves out which zone that wire actually sits in, so show both
+  // on hover rather than making the reader open the inspector for it.
+  const zones = n.kind === "segment" ? [...new Set((n.members || []).map(m => m.zone).filter(Boolean))] : [];
   tooltip.innerHTML = `
     <div class="row1"><span class="label">${escapeHtml(n.label)}</span>${confPillHtml(n.confidence)}</div>
     <div class="kind">${n.kind}${n.stale ? " · stale" : ""}</div>
     <div class="kv"><span class="k">CIDR</span><span class="v">${escapeHtml(n.cidr || "—")}</span></div>
+    ${zones.length ? `<div class="kv"><span class="k">Zone</span><span class="v">${escapeHtml(zones.join(", "))}</span></div>` : ""}
     <div class="kv"><span class="k">Meta</span><span class="v">${escapeHtml(n.meta || "—")}</span></div>
     <div class="kv"><span class="k">Warnings</span><span class="v">${n.warnings.length || "none"}</span></div>
     <div class="hint">Double-click to open the inspector</div>`;
@@ -600,8 +626,10 @@ function showEdgeTooltip(target, e) {
   positionTooltip(target);
   const first = e.evidence[e.evidence.length - 1] || {};
   tooltip.innerHTML = `
-    <div class="row1"><span class="label">Rule ${e.rule}</span>${confPillHtml(e.confidence)}</div>
+    <div class="row1"><span class="label">${e.label ? escapeHtml(e.label) : "Rule " + e.rule}</span>${confPillHtml(e.confidence)}</div>
     <div class="kind">Edge${e.overlay ? " · vpn overlay" : ""}</div>
+    ${e.ifaceCidr ? `<div class="kv"><span class="k">CIDR</span><span class="v">${escapeHtml(e.ifaceCidr)}</span></div>` : ""}
+    ${e.ifaceZone ? `<div class="kv"><span class="k">Zone</span><span class="v">${escapeHtml(e.ifaceZone)}</span></div>` : ""}
     <div class="kv"><span class="k">Rule</span><span class="v">${e.rule}</span></div>
     <div class="kv"><span class="k">Confidence</span><span class="v">${e.confidence}</span></div>
     <div class="kv"><span class="k">Evidence</span><span class="v">${escapeHtml((first.quote || "").split("\n")[0] || "")}</span></div>
