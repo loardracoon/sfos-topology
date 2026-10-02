@@ -168,9 +168,11 @@ function renderForm(body, getGraphDevices, existing) {
   };
   const label = mk("Label", "fLabel", existing?.label);
   const host = mk("Host and port, or a capture directory", "fHost", existing?.host || existing?.offlineDir);
-  const cred = mk("Credential — environment variable name", "fCred", existing?.tokenEnv);
+  const token = mk("API key", "fToken", "", "password");
+  token.placeholder = existing ? "leave blank to keep the current key" : "sfos_...";
+  const pin = mk("Certificate pin (SHA-256, optional)", "fPin", existing?.pinSha256);
   body.appendChild(el("p", "empty-note",
-    "The value is read from the environment or the sibling secrets file. It is never written into the fleet definition, never returned by the API, and an empty field on an edit means \"keep the existing one\"."));
+    "The key is written to the sibling secrets file, never into devices.json and never returned by the API -- entering nothing on an edit keeps the existing one. A device whose host is manually set up with tokenEnv in devices.json instead keeps working too; Settings only ever writes here, never there."));
 
   const result = el("div"); body.appendChild(result);
 
@@ -178,7 +180,7 @@ function renderForm(body, getGraphDevices, existing) {
   const save = el("button", "primary", existing ? "Save" : "Add"); save.type = "button";
   save.addEventListener("click", async () => {
     save.disabled = true;
-    const payload = { label: label.value.trim(), host: host.value.trim(), tokenEnv: cred.value.trim() };
+    const payload = { label: label.value.trim(), host: host.value.trim(), token: token.value, pinSha256: pin.value.trim() };
     const { ok, status, body: resp } = existing
       ? await apiFetch("/api/devices/" + encodeURIComponent(existing.label), { method: "PUT", body: JSON.stringify(payload) })
       : await apiFetch("/api/devices", { method: "POST", body: JSON.stringify(payload) });
