@@ -21,3 +21,13 @@ spec:
                 name: sfos-topology
                 port:
                   number: 8089
+    - host: topology.clau.sophizo.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sfos-topology
+                port:
+                  number: 8089
